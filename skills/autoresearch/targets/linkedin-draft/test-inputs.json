@@ -1,0 +1,62 @@
+[
+  {
+    "id": "cpg-news-1",
+    "pillar": "cpg_analysis",
+    "user_message": "Write a LinkedIn post about this news.",
+    "context": "Content Pillar: CPG Analysis\nHook Type: news_reaction\n\nSource Material:\nCore Insight: PepsiCo reported Q1 2026 results showing 3% organic revenue growth but 2% volume decline in North America beverages. CEO Ramon Laguarta said 'consumers are making more deliberate choices' and highlighted that the away-from-home channel showed stronger performance than at-home consumption.\n\nData Points:\n- 3% organic revenue growth\n- 2% volume decline in North America beverages\n- Away-from-home channel grew 5% vs 1% at-home\n- Marketing spend increased 12% YoY\n- Launched 15 new better-for-you SKUs in Q1\n\nQuotable Moments:\n- 'Consumers are making more deliberate choices'\n- 'The away-from-home occasion is where brand building happens now'"
+  },
+  {
+    "id": "cpg-news-2",
+    "pillar": "cpg_analysis",
+    "user_message": "Write a LinkedIn post about this news.",
+    "context": "Content Pillar: CPG Analysis\nHook Type: while_others\n\nSource Material:\nCore Insight: Nestlé is shutting down 3 of its US manufacturing plants while simultaneously investing $2B in 'health science' products. The company is pivoting from volume-driven growth to margin-driven wellness positioning.\n\nData Points:\n- 3 US plants closing (850 jobs lost)\n- $2B investment in health science division\n- Organic growth flat at 0.2% in Americas\n- Health science segment growing 18% YoY\n- Premium products now 34% of portfolio (up from 22% in 2023)\n\nQuotable Moments:\n- 'We are not a food company anymore. We are a nutrition, health, and wellness company.'\n- 'Volume is a vanity metric. Margin per occasion is the new KPI.'"
+  },
+  {
+    "id": "cpg-news-3",
+    "pillar": "cpg_analysis",
+    "user_message": "Write a LinkedIn post about this news.",
+    "context": "Content Pillar: CPG Analysis\nHook Type: question\n\nSource Material:\nCore Insight: Target reported that its private-label brands now account for 28% of total grocery sales, up from 19% two years ago. Shoppers are switching from national brands to store brands at the fastest rate in a decade.\n\nData Points:\n- Private label = 28% of Target grocery (up from 19%)\n- Fastest brand-switching rate in a decade\n- National brand facings reduced by 15% in center store\n- Good & Gather brand hit $4B in annual sales\n- Average basket with private label is 23% larger\n\nQuotable Moments:\n- 'The stigma around store brands is gone for this generation of shoppers'\n- 'National brands that can't justify their price premium will lose shelf space permanently'"
+  },
+  {
+    "id": "sampling-1",
+    "pillar": "sampling_retail_media",
+    "user_message": "Write a LinkedIn post about this news.",
+    "context": "Content Pillar: Sampling & Retail Media\nHook Type: news_reaction\n\nSource Material:\nCore Insight: Instacart just launched an in-store sampling program where brands can target shoppers based on purchase history. The program charges $8-12 per sample interaction with attribution tracking.\n\nData Points:\n- $8-12 per sample interaction\n- Attribution tracking links sample to purchase within 30 days\n- Early results show 4.1x ROI for participating brands\n- 2,200 stores in pilot\n- Average conversion from sample to purchase: 34%\n\nQuotable Moments:\n- 'Sampling is becoming a performance channel, not a brand awareness play'\n- 'We can now prove that a free sample in aisle 7 led to a purchase 3 weeks later'"
+  },
+  {
+    "id": "sampling-2",
+    "pillar": "sampling_retail_media",
+    "user_message": "Write a LinkedIn post about this news.",
+    "context": "Content Pillar: Sampling & Retail Media\nHook Type: while_others\n\nSource Material:\nCore Insight: Costco's sampling program generates an estimated $5.5B in incremental annual sales. A new study found that products sampled at Costco see a 71% sales lift on the day of sampling and a 20% sustained lift for the following 3 months.\n\nData Points:\n- $5.5B in estimated incremental annual sales from sampling\n- 71% sales lift on day of sampling\n- 20% sustained lift for 3 months post-sample\n- Costco spends $0 on sampling — brands pay CDS (Club Demonstration Services)\n- 89% of Costco members say sampling influences their purchase decisions\n\nQuotable Moments:\n- 'Costco didn't build a sampling program. They built a $5.5 billion influence machine.'\n- 'The sample table is the most valuable real estate in retail that nobody talks about.'"
+  },
+  {
+    "id": "sampling-3",
+    "pillar": "sampling_retail_media",
+    "user_message": "Write a LinkedIn post about this news.",
+    "context": "Content Pillar: Sampling & Retail Media\nHook Type: news_reaction\n\nSource Material:\nCore Insight: Kroger announced it is integrating its retail media network with in-store sampling data. Brands will be able to target digital ads to shoppers who tried their product in-store, closing the loop between physical trial and digital retargeting.\n\nData Points:\n- First retailer to connect sampling data with digital ad targeting\n- Early tests show 3.2x higher click-through rate on retargeted ads vs cold targeting\n- 58% of sampled shoppers who saw a follow-up ad purchased within 14 days\n- Program launching in 1,200 stores\n- Expected to generate $400M in incremental media revenue by 2027\n\nQuotable Moments:\n- 'The physical-to-digital handoff is the biggest unlock in retail media since first-party data'\n- 'We're turning every sample table into a first-party data collection point'"
+  },
+  {
+    "id": "startup-ops-1",
+    "pillar": "startup_ops",
+    "user_message": "Write a LinkedIn post about this topic.",
+    "context": "Content Pillar: Startup Ops & Leadership\nHook Type: confessional\n\nSource Material:\nCore Insight: Deuce has been using AI tools (Claude Code, Codex) to build internal tools and automations for the past 4 months. A non-technical operator building production-grade tools. The key insight: the bottleneck isn't coding ability, it's problem definition.\n\nData Points:\n- 4 months of daily AI-assisted building\n- Built 6 internal tools (AR collection agent, LinkedIn automation, meeting prep, KPI dashboards)\n- Zero formal CS education\n- Estimated 10-20x productivity multiplier vs pre-AI\n- Replaced 2 planned engineering hires with AI-assisted self-serve\n\nQuotable Moments:\n- 'I replaced two engineering job postings with a Claude subscription'\n- 'The hardest part isn't getting AI to write code. It's knowing what to build.'"
+  },
+  {
+    "id": "startup-ops-2",
+    "pillar": "startup_ops",
+    "user_message": "Write a LinkedIn post about this topic.",
+    "context": "Content Pillar: Startup Ops & Leadership\nHook Type: declarative\n\nSource Material:\nCore Insight: EOS (Entrepreneurial Operating System) has been the operating framework at Recess for 2 years. The biggest lesson: the system works, but only if leadership is willing to fire fast and have uncomfortable conversations.\n\nData Points:\n- 2 years on EOS\n- Completed 8 quarterly planning cycles (Rocks)\n- Made 4 hard personnel decisions directly attributed to EOS accountability\n- Revenue per employee up 40% since implementation\n- Meeting time down 25% (replaced ad hoc with L10 structure)\n\nQuotable Moments:\n- 'EOS didn't make us a better company. It made us honest about where we sucked.'\n- 'The Rocks process is just a formal way of admitting you can only do 3-5 things well per quarter.'"
+  },
+  {
+    "id": "transcript-1",
+    "pillar": "cpg_analysis",
+    "user_message": "Write a LinkedIn post based on this call transcript insight.",
+    "context": "Content Pillar: CPG Analysis\nHook Type: news_reaction\n\nSource Material:\nCore Insight: From a call with a major CPG brand's VP of Marketing: They're shifting 30% of their trade promotion budget to experiential sampling because traditional couponing is seeing diminishing returns. The VP said 'our coupon redemption rates dropped 40% in two years but sampling conversion held steady at 35%.'\n\nData Points:\n- 30% of trade promo budget shifting to experiential\n- Coupon redemption down 40% in 2 years\n- Sampling conversion steady at 35%\n- Company spending $50M/year on trade promo total\n- Experiential programs showing 2.8x ROI vs traditional promo\n\nQuotable Moments (anonymized):\n- 'Our coupon redemption rates dropped 40% in two years but sampling conversion held steady at 35%'\n- 'We're not cutting trade spend — we're moving it to where it actually converts'\n\nNote: Customer must be anonymized as 'a major CPG brand'"
+  },
+  {
+    "id": "transcript-2",
+    "pillar": "sampling_retail_media",
+    "user_message": "Write a LinkedIn post based on this call transcript insight.",
+    "context": "Content Pillar: Sampling & Retail Media\nHook Type: while_others\n\nSource Material:\nCore Insight: From a conversation with a retail buyer at a major grocery chain: They're starting to charge brands for sampling slots the same way they charge for endcap placement. 'Premium sampling positions' near checkout and fresh produce are going for 3x the rate of back-of-store locations.\n\nData Points:\n- Premium sampling positions near checkout: 3x rate of back-of-store\n- Retailers treating sampling slots as 'retail media inventory'\n- One major chain generating $12M/year from sampling slot fees alone\n- Brands with data showing higher conversion get priority placement\n- Expected to become standard practice industry-wide within 18 months\n\nQuotable Moments (anonymized):\n- 'We treat our sampling positions the same as our endcap inventory now — it's all media'\n- 'Brands that can prove conversion get first pick. Everyone else goes to the back of the store.'\n\nNote: Retailer must be anonymized as 'a major grocery chain'"
+  }
+]
