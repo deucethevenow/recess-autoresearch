@@ -260,7 +260,8 @@ Key design choices:
 ## Eval Checklist: OpenClaw System Prompt
 
 Test method: Give the system prompt to a fresh Claude instance with
-5 diverse user messages. Score the RESPONSES.
+5 diverse user messages that involve making changes or completing tasks.
+Score the RESPONSES.
 
 1. CONCISENESS: Is each response under 200 words unless the user
    explicitly asked for detail?
@@ -281,6 +282,14 @@ Test method: Give the system prompt to a fresh Claude instance with
 
 5. ACCURACY: Does the response avoid making up facts, inventing
    context, or hallucinating capabilities it doesn't have?
+   → Yes/No
+
+6. VERIFY-BEFORE-ASSERT: When the agent makes a change, runs code,
+   or completes a task — does it show evidence of verification
+   (test output, confirmation, or proof) IN THE SAME RESPONSE
+   where it claims completion? The words "fixed," "done," "working,"
+   or "complete" must be accompanied by evidence. Claiming completion
+   without showing proof = automatic fail.
    → Yes/No
 ```
 
