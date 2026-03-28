@@ -2,8 +2,9 @@
 
 **Task ID:** task-autoresearch
 **Created:** 2026-03-28
-**Status:** Planned (pending review)
-**Owner:** Steve (OpenClaw) → Deuce approval required
+**Status:** APPROVED — Phase 0 in progress
+**Owner:** Steve (OpenClaw)
+**Approved by:** Deuce (2026-03-28)
 
 ---
 
@@ -32,35 +33,40 @@ This sits at the intersection of two Recess priorities:
 
 ### Where It Lives
 
-```
-clawd/skills/autoresearch/           ← The skill itself (SKILL.md + runner)
-  SKILL.md                           ← OpenClaw skill definition
-  scripts/
-    autoresearch-loop.py             ← Core loop runner
-    scoring-engine.py                ← Eval checklist scorer (calls Claude)
-    mutation-engine.py               ← Proposes one small change per round
-    results-logger.py                ← Writes round logs
-  templates/
-    eval-checklist-template.md       ← Template for writing eval criteria
-    program-template.md              ← Template for program.md files
+Everything lives in a single location under the OpenClaw workspace:
 
-recess-brain/skills/autoresearch/    ← Results & configs per target
-  targets/
-    linkedin-draft/
-      program.md                     ← Instructions for this target
-      eval-checklist.md              ← Binary eval criteria
-      test-inputs.json               ← Diverse test inputs
-      .autoresearch/
-        results.jsonl                ← Round-by-round log
-        best-prompt.md               ← Current best version
-        changelog.md                 ← Human-readable history
-    campaign-recap/
-      ...same structure...
-    openclaw-system-prompt/
-      ...same structure...
 ```
-
-**Rationale:** The skill (how to run autoresearch) lives in OpenClaw's skills directory. The targets (what to optimize, their evals, and their results) live in `recess-brain` alongside the prompts they're improving. This keeps the optimization history co-located with the thing being optimized.
+clawd/skills/autoresearch/
+├── SKILL.md                           # OpenClaw skill definition
+├── scripts/
+│   ├── autoresearch-loop.py           # Core loop runner
+│   ├── scoring-engine.py              # Eval checklist scorer (calls Claude)
+│   ├── mutation-engine.py             # Proposes one small change per round
+│   ├── results-logger.py              # Writes round logs
+│   └── utils.py
+├── templates/
+│   ├── eval-checklist-template.md     # Template for writing eval criteria
+│   ├── program-template.md            # Template for program.md files
+│   └── test-inputs-template.json
+├── targets/
+│   ├── linkedin-draft/
+│   │   ├── program.md                 # Agent instructions for this target
+│   │   ├── eval-checklist.md          # Binary eval criteria
+│   │   ├── test-inputs.json           # Diverse test inputs
+│   │   ├── original-prompt.md         # Never modified
+│   │   └── .autoresearch/
+│   │       ├── best-prompt.md         # Current best version
+│   │       ├── results.jsonl          # Round-by-round log
+│   │       └── changelog.md          # Human-readable history
+│   ├── openclaw-system-prompt/
+│   │   └── ...same structure...
+│   ├── campaign-recap/
+│   │   └── ...same structure...
+│   └── ...more targets...
+├── reports/
+│   └── prompt-health.md              # Weekly aggregate report
+└── README.md
+```
 
 ### What Runs the Loop
 
@@ -78,7 +84,7 @@ Deuce types: "Run autoresearch on linkedin-draft"
 - Weekly overnight runs on high-priority targets
 - Cron triggers sub-agent, results posted to DM next morning
 
-**Why not Cloud Run?** The loop needs to call Claude for both generation and scoring. OpenClaw already handles Claude API auth, sub-agent orchestration, and Slack reporting. Adding Cloud Run adds infra complexity for no gain at this stage. We can migrate to Cloud Run later if we need to run many targets in parallel.
+**Why not Cloud Run?** The loop needs to call Claude for both generation and scoring. OpenClaw already handles Claude API auth, sub-agent orchestration, and Slack reporting. Adding Cloud Run adds infra complexity for no gain at this stage. Can migrate later if we need parallel target runs.
 
 ### Results Storage
 
@@ -122,9 +128,9 @@ Deuce types: "Run autoresearch on linkedin-draft"
                     │                    ▼         ▼       │
                     │              ┌────────┐ ┌────────┐   │
                     │              │ Score  │ │ Score  │   │
-                    │              │ Better │ │ Worse  │   │
-                    │              │→ KEEP  │ │→REVERT │   │
-                    │              │→ Commit│ │→ Reset │   │
+                    │              │ Better │ │ Worse/ │   │
+                    │              │→ KEEP  │ │ Equal  │   │
+                    │              │→ Commit│ │→REVERT │   │
                     │              └────────┘ └────────┘   │
                     │                    │                  │
                     │                    ▼                  │
@@ -155,7 +161,7 @@ Deuce types: "Run autoresearch on linkedin-draft"
 The autoresearch loop itself is mostly self-contained (Claude API calls for generation + scoring). MCPs come into play for:
 - **BigQuery MCP:** Storing aggregate results, and for testing the NL→SQL target (need real schema/data)
 - **Slack MCP:** Reporting results, triggering runs
-- **GitHub (gh CLI):** Committing improved prompts to recess-brain
+- **GitHub (gh CLI):** Committing improved prompts
 
 The loop does NOT need all 8 MCPs active simultaneously, which avoids the ~70k context window collapse issue.
 
@@ -181,11 +187,44 @@ Each target gets a **checklist of 3-6 binary (yes/no) questions**. A separate Cl
 - "Would this perform well on LinkedIn?" → Unprovable
 - "Is the tone right?" → No clear standard
 
-**Anti-gaming safeguard:** Every checklist MUST include one "holistic quality" criterion scored by a separate Claude call with the instruction: "Ignore the checklist. Read this as a human reader. Would you find this genuinely useful/interesting? Yes or No." This catches outputs that technically pass all criteria but read like garbage.
+**Anti-gaming safeguard:** Every scoring response includes an `anti_gaming_pass` field where the scorer ignores the checklist and judges holistic quality. A keep decision is blocked if anti-gaming fails on 3+ of 10 test inputs. Additionally, every 10 rounds, a full anti-gaming audit runs all current best outputs through a more thorough holistic review to catch slow drift.
+
+### Scoring Response Schema
+
+The scoring engine returns structured JSON at temperature 0. This is the canonical schema:
+
+```json
+{
+  "criteria": [
+    {
+      "id": "hook",
+      "question": "Does the first line create curiosity or state a surprising fact without starting with 'I' or a question?",
+      "pass": true,
+      "reasoning": "The opening line states a specific statistic about sampling ROI that would surprise most marketers."
+    },
+    {
+      "id": "voice",
+      "question": "Does it sound like a specific person sharing a real opinion?",
+      "pass": false,
+      "reasoning": "The tone is generic 'thought leader' — could be anyone. No personal angle or strong opinion."
+    }
+  ],
+  "total_pass": 4,
+  "total_criteria": 6,
+  "score": 0.667,
+  "anti_gaming_pass": true,
+  "anti_gaming_reasoning": "This reads like a real LinkedIn post someone would engage with."
+}
+```
+
+Key design choices:
+- `reasoning` field forces the scorer to cite specific evidence, improving reliability
+- `anti_gaming_pass` and `anti_gaming_reasoning` are in the same response object (logged together, no separate call needed)
+- `score` is `total_pass / total_criteria` as a decimal
 
 ### Draft Eval Checklists
 
-#### Target 1: LinkedIn Content Generation Prompt
+#### Target: LinkedIn Content Generation Prompt (Phase 0 proof-of-concept)
 
 ```markdown
 ## Eval Checklist: LinkedIn Draft
@@ -215,7 +254,7 @@ Each target gets a **checklist of 3-6 binary (yes/no) questions**. A separate Cl
    → Yes/No
 ```
 
-#### Target 2: OpenClaw System Prompt
+#### Target: OpenClaw System Prompt (Phase 1 production target)
 
 ```markdown
 ## Eval Checklist: OpenClaw System Prompt
@@ -245,7 +284,7 @@ Test method: Give the system prompt to a fresh Claude instance with
    → Yes/No
 ```
 
-#### Target 3: Campaign Recap Generation Prompt
+#### Target: Campaign Recap Generation Prompt (Phase 3)
 
 ```markdown
 ## Eval Checklist: Campaign Recap
@@ -278,34 +317,40 @@ Test method: Give the system prompt to a fresh Claude instance with
 
 ### Phase 0: Foundation (Week 1)
 
-**Goal:** Build the core loop and prove it works on a simple target.
+**Goal:** Build the core loop and prove it works using LinkedIn draft generation as a proof-of-concept target.
 
 **Deliverables:**
 
 1. **SKILL.md** — OpenClaw skill definition for autoresearch
    - Trigger: "Run autoresearch on {target}"
    - References scripts, templates, target structure
-   
+
 2. **autoresearch-loop.py** — Core loop
    ```python
    # Pseudocode
-   def run(target_dir, max_rounds=50, convergence_threshold=0.95, convergence_count=3):
+   def run(target_dir, max_rounds=50, convergence_threshold=0.95):
        prompt = load(target_dir / "best-prompt.md")  # or original if first run
        eval_checklist = load(target_dir / "eval-checklist.md")
        test_inputs = load(target_dir / "test-inputs.json")
        program = load(target_dir / "program.md")
-       
+
        baseline_score = score(prompt, test_inputs, eval_checklist)
-       consecutive_converged = 0
-       
+       recent_scores = []  # track last 5 for convergence
+
        for round in range(max_rounds):
-           # Mutate
+           # Mutate (temperature 0.7 for creative variety)
            mutated_prompt = mutate(prompt, eval_checklist, last_failures, program)
-           
-           # Score
+
+           # Score (temperature 0, structured JSON)
            new_score, failures = score(mutated_prompt, test_inputs, eval_checklist)
-           
-           # Keep or revert
+
+           # Anti-gaming gate: block if 3+ inputs fail holistic check
+           if anti_gaming_failures >= 3:
+               log_round(round, "REVERT (anti-gaming)", new_score)
+               continue
+
+           # Keep or revert — equal scores are reverted.
+           # Mutations should earn their place; no free rides for zero improvement.
            if new_score > baseline_score:
                prompt = mutated_prompt
                baseline_score = new_score
@@ -313,30 +358,35 @@ Test method: Give the system prompt to a fresh Claude instance with
                commit_to_git(prompt)
            else:
                log_round(round, "REVERT", new_score, diff)
-           
-           # Check convergence
-           if new_score >= convergence_threshold:
-               consecutive_converged += 1
-               if consecutive_converged >= convergence_count:
+
+           # Full anti-gaming audit every 10 rounds
+           if round % 10 == 0:
+               run_holistic_audit(prompt, test_inputs)
+
+           # Check convergence: 95%+ on 3 of last 5 rounds
+           recent_scores.append(new_score)
+           if len(recent_scores) > 5:
+               recent_scores.pop(0)
+           if len(recent_scores) >= 5:
+               converged_count = sum(1 for s in recent_scores if s >= convergence_threshold)
+               if converged_count >= 3:
                    break
-           else:
-               consecutive_converged = 0
-       
+
        save_results(target_dir)
        post_summary_to_slack()
    ```
 
 3. **scoring-engine.py** — Eval scorer
    - Takes: output text + eval checklist
-   - Calls: Claude Sonnet 4 (cost efficient, good at structured eval)
-   - Returns: per-criterion pass/fail + aggregate score
-   - Structured output format to prevent scoring inconsistency
+   - Calls: Claude Sonnet 4 at **temperature 0** with structured JSON output
+   - Returns: JSON matching the canonical schema (criteria[], total_pass, score, anti_gaming_pass, anti_gaming_reasoning)
+   - `reasoning` field forces scorer to cite specific text
 
 4. **mutation-engine.py** — Change proposer
    - Takes: current prompt + eval checklist + last round's failures
-   - Calls: Claude Sonnet 4 with program.md context
-   - Returns: exactly ONE small change + rationale
-   - Constraint: mutations must be minimal (1-3 lines changed) to keep diffs reviewable
+   - Calls: Claude Sonnet 4 at **temperature 0.7** with program.md context
+   - Returns: exactly ONE small change (1-5 lines) + rationale
+   - Constraint: mutations must be minimal to keep diffs reviewable
 
 5. **results-logger.py** — Logging
    - Writes to `results.jsonl` (one JSON object per round)
@@ -347,61 +397,63 @@ Test method: Give the system prompt to a fresh Claude instance with
    - Git-based: each improvement is a commit, reverts are `git checkout`
    - Backup: original prompt always preserved as `original-prompt.md` (never modified)
 
+7. **LinkedIn draft target setup** — Create the full target directory with eval checklist, 10 diverse test inputs, original prompt (copied from `recess-engage/prompts/linkedin/generate-draft.md`), and program.md.
+
 **Acceptance Criteria (Phase 0):**
-- [ ] Can run `autoresearch-loop.py` against a test target from CLI
+- [ ] Can run `autoresearch-loop.py` against LinkedIn draft target from CLI
 - [ ] Scoring engine returns consistent results on same input (>90% agreement on repeated runs)
 - [ ] Mutation engine proposes small, relevant changes (not random rewrites)
 - [ ] Results log captures every round with score, change, and keep/revert decision
 - [ ] Git history shows clean commits for each kept improvement
+- [ ] Equal-score mutations are reverted (verified in logs)
+- [ ] Convergence uses 3-of-last-5 rule (verified)
 
-### Phase 1: First Target (Week 2)
+### Phase 1: OpenClaw System Prompt (Week 2)
 
-**Recommended first target: LinkedIn content generation prompt**
+**Target: OpenClaw system prompt** — validated loop mechanics on LinkedIn in Phase 0, now applying to the highest-leverage target. The system prompt affects every team member interaction, making it the highest blast-radius optimization target.
 
-**Why this one first:**
-- Highest iteration frequency (runs 3x/week via cron)
-- Clear quality criteria (we already have voice-profile.json + banned phrases)
-- Easy to generate diverse test inputs (different news stories, different content pillars)
-- Results are immediately visible (better LinkedIn drafts = less editing for Deuce)
-- Low risk — worst case, we keep the original prompt
+**Why system prompt for Phase 1 (not Phase 0):**
+- Phase 0 proved the loop works on a simpler target (LinkedIn)
+- System prompt scoring is more complex (requires simulating diverse user interactions)
+- Higher risk if something goes wrong — need confidence in the framework first
 
 **Steps:**
 1. Define eval checklist with Deuce (draft above, refine together)
-2. Create 10 diverse test inputs:
-   - 3 CPG industry news stories
-   - 3 sampling/retail media stories
-   - 2 startup ops/leadership stories
-   - 2 Fireflies transcript insights
-3. Run baseline: score current prompt against checklist → establish starting point
+2. Create 10 diverse test user messages spanning:
+   - Quick factual questions ("What's on my calendar today?")
+   - Multi-step requests ("Pull last month's revenue from BigQuery and compare to forecast")
+   - Ambiguous requests ("Help me with the Heineken thing")
+   - Team member messages from non-technical users
+   - Edge cases (messages that could be misinterpreted)
+3. Run baseline: score current system prompt against checklist → establish starting point
 4. Run 50 rounds overnight
 5. Review results with Deuce:
    - Did the score actually improve?
-   - Do the improved outputs read better to a human?
+   - Do the improved responses read better to a human?
    - Any signs of checklist gaming?
-6. If validated: deploy improved prompt to the LinkedIn generation pipeline
-7. Document learnings in `recess-brain/decisions/autoresearch-v1-learnings.md`
+   - Test with real team interactions before deploying
+6. If validated: Deuce approves improved prompt before deployment
+7. Document learnings
 
 **Acceptance Criteria (Phase 1):**
 - [ ] Baseline score established and documented
 - [ ] 50+ rounds completed without errors
 - [ ] Final score measurably higher than baseline
 - [ ] Deuce confirms improved outputs are actually better (human validation)
-- [ ] Improved prompt deployed to production pipeline
+- [ ] Improved prompt deployed after Deuce approval (deployment flow: option b)
 
 ### Phase 2: Dashboard + Automation (Weeks 3-4)
 
 **Deliverables:**
 
 1. **Slack command trigger**
-   - `/autoresearch run linkedin-draft` → spawns sub-agent, posts results to thread
-   - `/autoresearch status` → shows last run results per target
-   - `/autoresearch history linkedin-draft` → shows score progression
+   - "Run autoresearch on linkedin-draft" → spawns sub-agent, posts results to thread
+   - "Autoresearch status" → shows last run results per target
+   - "Autoresearch history linkedin-draft" → shows score progression
 
-2. **Results dashboard** (lightweight — don't overbuild)
-   - **Option A: Slack-native** — Weekly summary posted to DM with score trends
-   - **Option B: Google Sheet** — Auto-updated via Sheets MCP, shareable with team
-   - **Option C: GitHub Pages** — Static HTML like our existing blockers dashboard
-   - **Recommendation: Start with Option A** (Slack summary), add Option B if the team wants to explore data
+2. **Results dashboard** (start with Slack-native summaries)
+   - Weekly summary posted to DM with score trends per target
+   - Upgrade to Google Sheet or GitHub Pages if team wants to explore data
 
 3. **Scheduled runs**
    - OpenClaw cron: Run each target weekly (overnight, staggered)
@@ -414,6 +466,8 @@ Test method: Give the system prompt to a fresh Claude instance with
    - `best-prompt-v{N}.md` — Numbered snapshots for rollback
    - Production prompt always pulled from `best-prompt.md`
 
+**Scope:** Steve/Deuce only through Phase 2. Team access in Phase 3.
+
 **Acceptance Criteria (Phase 2):**
 - [ ] Can trigger autoresearch from Slack
 - [ ] Results summary posted automatically after each run
@@ -422,9 +476,8 @@ Test method: Give the system prompt to a fresh Claude instance with
 
 ### Phase 3: Scale to All Key Prompts (Week 5+)
 
-1. **Roll out to remaining targets:**
+1. **Roll out to remaining targets** (see Appendix C for prompt locations):
    - Campaign recap generation
-   - OpenClaw system prompt
    - Meeting prep automation
    - Supply-side sales outreach
    - Landing page copy generator
@@ -433,11 +486,12 @@ Test method: Give the system prompt to a fresh Claude instance with
 2. **"Prompt Health" report**
    - Weekly aggregate: pass rates across all optimized prompts
    - Trend lines: are prompts improving, degrading, or stable?
-   - Alert if any prompt drops below 80% (possible eval drift or input distribution change)
+   - Alert if any prompt drops below 80%
 
 3. **Team adoption**
+   - Open autoresearch to broader team as part of AI training curriculum
    - Template for team members to create their own autoresearch targets
-   - Workshop in AI training curriculum: "How to write eval criteria"
+   - Workshop: "How to write eval criteria"
    - Each team member optimizes one prompt they use regularly
 
 4. **BigQuery integration**
@@ -457,28 +511,34 @@ Test method: Give the system prompt to a fresh Claude instance with
 
 ### Model Selection
 
-| Role | Model | Why |
-|------|-------|-----|
-| **Generation** (running the prompt being tested) | Same model used in production for that prompt | Results must reflect real-world performance |
-| **Scoring** (evaluating outputs against checklist) | Claude Sonnet 4 | Cost efficient, excellent at structured evaluation, fast |
-| **Mutation** (proposing changes) | Claude Sonnet 4 | Good at targeted edits, understands prompt engineering |
-| **Anti-gaming check** | Claude Sonnet 4 (separate call, different system prompt) | Independent judgment |
+| Role | Model | Temperature | Why |
+|------|-------|-------------|-----|
+| **Generation** | Same model used in production for that prompt | Production temp | Results must reflect real-world performance |
+| **Scoring** | Claude Sonnet 4 | **0** | Deterministic, cost efficient, structured JSON output |
+| **Mutation** | Claude Sonnet 4 | **0.7** | Creative variety; avoids repetitive proposals after reverts |
+| **Anti-gaming** | Claude Sonnet 4 | **0** | Bundled into scoring call; independent holistic judgment |
 
 ### Cost Estimates
 
 Per autoresearch run (50 rounds × 10 test inputs):
 
-| Component | Calls | Avg tokens/call | Est. cost |
-|-----------|-------|-----------------|-----------|
-| Generation | 500 (50 rounds × 10 inputs) | ~1,500 out | ~$3.75 |
-| Scoring | 500 (50 rounds × 10 inputs) | ~500 out | ~$1.25 |
-| Anti-gaming | 500 | ~200 out | ~$0.50 |
-| Mutation | 50 (1 per round) | ~1,000 out | ~$0.25 |
-| **Total per run** | | | **~$5.75** |
+| Component | Calls | Model | Avg tokens (in/out) | Est. cost |
+|-----------|-------|-------|---------------------|-----------|
+| Generation | 500 (50×10) | Sonnet 4 | ~1000 in / 1500 out | ~$3.75 |
+| Scoring + anti-gaming | 500 (50×10) | Sonnet 4 | ~2000 in / 700 out | ~$1.75 |
+| Mutation | 50 (1/round) | Sonnet 4 | ~3000 in / 1000 out | ~$0.25 |
+| **Total per run** | **1,050** | | | **~$5.75** |
 
 At weekly runs across 5 targets: **~$29/week, ~$115/month**
+Per-run budget cap: **$10**
 
-This is extremely cheap compared to the human time it replaces (5-10 hours/week @ even $50/hr = $250-500/week).
+### Convergence Criteria
+
+**95%+ on 3 of the last 5 rounds.** This is more robust than "3 consecutive" because it tolerates one-off scoring variance. If round N scores 96%, round N+1 scores 93% (variance), and rounds N+2 through N+4 score 95%+, we still converge. With strict consecutive, that one blip would reset the counter.
+
+### Tie-Handling Rule
+
+**Equal scores are reverted.** If `new_score == baseline_score`, the mutation is discarded. Mutations should earn their place — no complexity added for zero improvement. This is enforced with a strict `>` comparison (not `>=`).
 
 ### Configuration Defaults
 
@@ -487,51 +547,20 @@ This is extremely cheap compared to the human time it replaces (5-10 hours/week 
   "max_rounds": 50,
   "test_inputs_per_round": 10,
   "convergence_threshold": 0.95,
-  "convergence_count": 3,
+  "convergence_window": 5,
+  "convergence_required": 3,
   "scoring_model": "claude-sonnet-4-20250514",
+  "scoring_temperature": 0,
   "mutation_model": "claude-sonnet-4-20250514",
+  "mutation_temperature": 0.7,
+  "generation_temperature": "match_production",
   "max_mutation_lines": 5,
+  "anti_gaming_block_threshold": 3,
+  "anti_gaming_audit_interval": 10,
   "budget_cap_usd": 10.00,
-  "timeout_minutes": 120
+  "timeout_minutes": 120,
+  "tie_handling": "revert"
 }
-```
-
-### File Structure (Complete)
-
-```
-clawd/skills/autoresearch/
-├── SKILL.md
-├── scripts/
-│   ├── autoresearch-loop.py
-│   ├── scoring-engine.py
-│   ├── mutation-engine.py
-│   ├── results-logger.py
-│   └── utils.py
-├── templates/
-│   ├── eval-checklist-template.md
-│   ├── program-template.md
-│   └── test-inputs-template.json
-└── README.md
-
-recess-brain/skills/autoresearch/
-├── README.md                          # Overview + how to create targets
-├── targets/
-│   ├── linkedin-draft/
-│   │   ├── program.md                 # Agent instructions for this target
-│   │   ├── eval-checklist.md          # Binary eval criteria
-│   │   ├── test-inputs.json           # Diverse test inputs
-│   │   ├── original-prompt.md         # Never modified
-│   │   └── .autoresearch/
-│   │       ├── best-prompt.md         # Current best version
-│   │       ├── results.jsonl          # Round-by-round log
-│   │       └── changelog.md           # Human-readable history
-│   ├── campaign-recap/
-│   │   └── ...same structure...
-│   ├── openclaw-system-prompt/
-│   │   └── ...same structure...
-│   └── ...more targets...
-└── reports/
-    └── prompt-health.md               # Weekly aggregate report
 ```
 
 ---
@@ -540,39 +569,40 @@ recess-brain/skills/autoresearch/
 
 ### Context Window (HIGH risk)
 - **Problem:** With 8 MCPs active, context can collapse to ~70k tokens
-- **Mitigation:** Autoresearch runs as an isolated sub-agent with NO MCPs loaded. It only needs Claude API access (for generation/scoring) and filesystem access (for reading/writing prompts). MCPs are only needed for the trigger (Slack) and results reporting (Slack, BigQuery), which happen outside the loop.
+- **Mitigation:** Autoresearch runs as an isolated sub-agent with NO MCPs loaded. Only needs Claude API access (generation/scoring) and filesystem access. MCPs only for trigger (Slack) and reporting, which happen outside the loop.
 
 ### Cost Overrun (MEDIUM risk)
 - **Problem:** Runaway loop or too many targets = unexpected API bill
 - **Mitigation:** Hard budget cap per run ($10 default), max rounds (50), and timeout (2 hours). If budget is hit, loop stops and reports partial results.
 
 ### Prompt Drift (MEDIUM risk)
-- **Problem:** Each mutation is small, but 50 small changes can collectively drift the prompt away from the original intent
-- **Mitigation:** 
+- **Problem:** Each mutation is small, but 50 small changes can collectively drift away from original intent
+- **Mitigation:**
   1. Original prompt always preserved (never modified)
-  2. The anti-gaming criterion catches coherence drift
-  3. program.md includes explicit constraints ("maintain Deuce's voice," "keep under 200 words," etc.)
-  4. Human review required before deploying any improved prompt to production (Phase 1 at minimum; can relax later)
+  2. Anti-gaming check catches coherence drift (every round + audit every 10 rounds)
+  3. program.md includes explicit constraints ("maintain Deuce's voice," etc.)
+  4. Human review required before deploying improved prompt (Deuce approval — option b)
 
 ### Checklist Gaming (MEDIUM risk)
-- **Problem:** The mutation engine optimizes for passing the checklist, not for actual quality
+- **Problem:** Mutation engine optimizes for passing the checklist, not actual quality
 - **Mitigation:**
-  1. Anti-gaming criterion (separate Claude call, "would a human find this genuinely useful?")
-  2. Diverse test inputs (the prompt must work across different scenarios, not just one)
-  3. Periodic human review of improved prompts
-  4. Checklist evolution — if gaming is detected, add criteria that catch the gaming pattern
+  1. Anti-gaming field in every scoring response
+  2. Block keeps if 3+ test inputs fail anti-gaming
+  3. Diverse test inputs (prompt must work across scenarios)
+  4. Periodic human review
+  5. Checklist evolution — if gaming detected, add criteria that catch it
 
 ### External System Dependencies (LOW risk for Phase 0-1)
-- **Problem:** Some prompts need real data (BigQuery queries, HubSpot data) to test properly
-- **Mitigation:** Phase 0-1 targets don't need external systems (LinkedIn drafts and system prompts work with synthetic inputs). For Phase 3 targets like BigQuery NL→SQL, we'll need to set up test datasets. This is a known future complexity, not a blocker.
+- **Problem:** Some prompts need real data to test properly
+- **Mitigation:** Phase 0-1 targets don't need external systems. Phase 3 targets like BigQuery NL→SQL will need test datasets — known future complexity, not a blocker.
 
 ### Scoring Consistency (MEDIUM risk)
-- **Problem:** LLM-based scoring may not be deterministic — same output could score differently on two runs
+- **Problem:** LLM scoring may not be deterministic
 - **Mitigation:**
-  1. Use structured output (JSON) for scoring to reduce ambiguity
-  2. Run scoring at temperature 0
-  3. For close calls (within 5% of baseline), run scoring 3 times and take majority
-  4. Validate scoring consistency in Phase 0 before trusting it for optimization
+  1. Structured JSON output with `reasoning` field reduces ambiguity
+  2. Temperature 0 for scoring
+  3. For close calls (within 5% of baseline), run scoring 3x and take majority
+  4. Validate consistency in Phase 0 before trusting for optimization
 
 ---
 
@@ -582,59 +612,40 @@ recess-brain/skills/autoresearch/
 
 | Metric | Baseline | Phase 1 Target | Phase 3 Target |
 |--------|----------|----------------|----------------|
-| LinkedIn draft pass rate | TBD (measure in Phase 1) | 85%+ | 92%+ |
+| LinkedIn draft pass rate | TBD (Phase 0) | 85%+ | 92%+ |
+| System prompt pass rate | TBD | 85%+ (Phase 1) | 90%+ |
 | Campaign recap pass rate | TBD | — | 90%+ |
-| System prompt pass rate | TBD | — | 88%+ |
-| Targets actively running | 0 | 1 | 5+ |
+| Targets actively running | 0 | 2 | 5+ |
 | Manual prompt editing time/week | ~5-10 hrs | ~3-5 hrs | ~1 hr |
 
 ### Secondary Metrics
 
 - **Scoring consistency:** Same output scores within 5% on repeated runs
-- **Mutation quality:** >30% of mutations are kept (vs. reverted) — lower means the mutation engine is guessing randomly
-- **Convergence speed:** Reaches 90%+ within 30 rounds (vs. needing all 50)
-- **Team adoption:** 2+ team members create their own targets by end of Phase 3
+- **Mutation quality:** >30% of mutations kept (lower = too random)
+- **Convergence speed:** Reaches 90%+ within 30 rounds
+- **Team adoption:** 2+ team members create their own targets by Phase 3
 - **Cost efficiency:** <$6/run average
 
-### How We Know It's NOT Working
-- Pass rate improves but human reviewers say outputs are worse → checklist gaming, need to revise criteria
-- Mutation keep rate <10% → mutation engine is too random, need better program.md
-- Score plateaus early and never improves → eval criteria may be too easy or too hard
-- Cost exceeds $15/run consistently → inefficiency in the loop, needs optimization
+### Failure Signals
+- Pass rate improves but humans say outputs are worse → checklist gaming
+- Mutation keep rate <10% → mutation engine too random, improve program.md
+- Score plateaus early → eval criteria too easy or too hard
+- Cost exceeds $15/run consistently → loop inefficiency
 
 ---
 
-## 8. Open Questions for Deuce
+## 8. Decisions Log
 
-### Decisions Needed
+Resolved during review (2026-03-28):
 
-1. **First target confirmation:** I recommend LinkedIn draft generation. Agree, or prefer a different starting point?
-
-2. **Eval criteria review:** The draft checklists above are starting points. Want to refine them together before Phase 0, or should I build the framework first and we iterate on criteria during Phase 1?
-
-3. **Deployment approval flow:** When autoresearch finds a better prompt, should it:
-   - (a) Auto-deploy to production immediately?
-   - (b) Post the improved prompt for Deuce approval before deploying?
-   - (c) Auto-deploy but keep original as instant rollback?
-   - **Recommendation:** (b) for Phase 1, evolve to (c) once we trust the process
-
-4. **Recess Brain access:** I don't currently have the `recess-brain` repo cloned locally. Need to clone it to set up the target directories. Is it at `github.com/deucethevenow/recess-brain` or a different org?
-
-5. **Budget comfort:** Estimated ~$115/month at full scale (5 weekly targets). Is that within acceptable range, or should we cap lower?
-
-6. **Team involvement:** Should we build this as a tool only Steve/Deuce use, or should it be accessible to the broader team from Phase 2 onward? (Affects how much we invest in UI/docs)
-
-### Information Needed
-
-1. **Campaign recap template:** I don't have the current campaign recap/case study generation prompt. Where does it live? (Make.com, a doc, a file somewhere?)
-
-2. **Meeting prep prompt:** Where does the Lindy.ai meeting prep automation prompt live? Need to assess it as a Phase 3 target.
-
-3. **Supply-side sales outreach prompt:** Same question — where does this live?
-
-4. **Landing page copy generator:** Is this a Make.com automation or a standalone prompt? Where's the current version?
-
-5. **BigQuery NL→SQL prompt:** I have the BigQuery skill in `clawd/skills/bigquery-query-agent/`. Is this the prompt we'd optimize, or is there a separate one in the CoS agent or elsewhere?
+| # | Question | Decision |
+|---|----------|----------|
+| 1 | First target | LinkedIn for Phase 0 validation, OpenClaw system prompt for Phase 1 production |
+| 2 | Eval criteria timing | Build framework first in Phase 0, iterate on criteria during Phase 1 |
+| 3 | Deployment approval | Option (b) — Deuce approves before deploying. Evolve to (c) once trusted |
+| 4 | Recess Brain repo | Located at `github.com/deucethevenow/recess-brain`. Will clone when needed for Phase 3. |
+| 5 | Budget | $115/month approved. Per-run cap: $10 |
+| 6 | Team involvement | Steve/Deuce only through Phase 2. Team access in Phase 3 via AI training curriculum |
 
 ---
 
@@ -642,16 +653,16 @@ recess-brain/skills/autoresearch/
 
 | Aspect | Karpathy AutoResearch | Recess AutoResearch |
 |--------|----------------------|---------------------|
-| What's being optimized | PyTorch training code | Prompts & agent workflows |
+| What's optimized | PyTorch training code | Prompts & agent workflows |
 | Metric | val_bpb (lower = better) | Eval checklist pass rate (higher = better) |
-| What the agent modifies | `train.py` (one file) | Target prompt (one file) |
+| What agent modifies | `train.py` (one file) | Target prompt (one file) |
 | Time per round | 5 min (GPU training) | ~30 sec (API calls) |
 | Rounds per hour | ~12 | ~60-120 |
 | Hardware required | NVIDIA GPU (H100) | None (API-based) |
 | Scoring | Automatic (loss function) | LLM-judged (binary checklist) |
 | Key risk | Overfitting to val set | Checklist gaming |
 
-Our version is actually MORE efficient per round (seconds vs. minutes) but less precise in scoring (LLM judgment vs. mathematical loss). The anti-gaming safeguards are our answer to the precision gap.
+Our version is more efficient per round (seconds vs. minutes) but less precise in scoring (LLM judgment vs. mathematical loss). The anti-gaming safeguards are our answer to the precision gap.
 
 ## Appendix B: Example `program.md` for LinkedIn Target
 
@@ -688,6 +699,22 @@ A great LinkedIn post from this prompt should:
 - Sound like Deuce, not like "LinkedIn thought leader"
 ```
 
+## Appendix C: Prompt Inventory
+
+Locations of all target prompts for Phase 3 planning. Gathered 2026-03-28.
+
+| Target | Location | Status |
+|--------|----------|--------|
+| **LinkedIn content generation** | `~/recess-engage/prompts/linkedin/generate-draft.md` | ✅ Located — Phase 0 target |
+| **OpenClaw system prompt** | `~/clawd/SOUL.md` + `~/clawd/AGENTS.md` | ✅ Located — Phase 1 target |
+| **Campaign recap / case study** | **UNKNOWN** — Deuce to confirm: Make.com scenario? Google Doc? Airtable? | ❓ Need location |
+| **Lindy.ai meeting prep** | **UNKNOWN** — Lives inside Lindy.ai automation. Deuce or Ian to export the prompt text. | ❓ Need location |
+| **Supply-side sales outreach** | **UNKNOWN** — Likely a Lindy.ai automation. Deuce to confirm. | ❓ Need location |
+| **Landing page copy generator** | **UNKNOWN** — Make.com scenario or standalone? Deuce to confirm. | ❓ Need location |
+| **BigQuery NL→SQL** | `~/clawd/skills/bigquery-query-agent/SKILL.md` | ✅ Located — can optimize the skill's prompt instructions |
+
+**Note:** The 3 unknown locations are not blockers for Phase 0-2. We need them documented before Phase 3 begins. Deuce can provide locations async anytime in the next 4 weeks.
+
 ---
 
-*End of Task Packet. Ready for review.*
+*End of Task Packet. Approved 2026-03-28. Phase 0 in progress.*
