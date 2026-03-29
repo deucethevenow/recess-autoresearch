@@ -22,6 +22,7 @@ except ImportError:
 
 DEFAULT_MODEL = "claude-sonnet-4-20250514"
 SCORING_TEMPERATURE = 0
+DEFAULT_SCORING_RUNS = 3  # Score each output 3x and average to reduce variance
 
 # --- Schema ---
 
@@ -144,16 +145,13 @@ RULES:
     return system_prompt, user_prompt
 
 
-def score_single_output(
+def _score_single_call(
     client: anthropic.Anthropic,
     output_text: str,
     criteria: list[dict],
     model: str = DEFAULT_MODEL
 ) -> dict:
-    """Score a single output against the eval checklist.
-    
-    Returns the structured scoring response dict.
-    """
+    """Make a single scoring API call. Internal — use score_single_output for averaged scoring."""
     system_prompt, user_prompt = build_scoring_prompt(output_text, criteria)
     
     response = client.messages.create(
@@ -188,13 +186,91 @@ def score_single_output(
     return result
 
 
+def score_single_output(
+    client: anthropic.Anthropic,
+    output_text: str,
+    criteria: list[dict],
+    model: str = DEFAULT_MODEL,
+    scoring_runs: int = DEFAULT_SCORING_RUNS
+) -> dict:
+    """Score a single output against the eval checklist using 3x averaging.
+    
+    Runs the scoring call `scoring_runs` times and uses majority vote per
+    criterion. The final score is based on majority-voted pass/fail per
+    criterion, not averaged floats — this prevents noise from flipping
+    close calls.
+    
+    Returns the structured scoring response dict with averaged results.
+    """
+    if scoring_runs == 1:
+        return _score_single_call(client, output_text, criteria, model)
+    
+    # Run N scoring calls
+    all_results = []
+    for _ in range(scoring_runs):
+        result = _score_single_call(client, output_text, criteria, model)
+        all_results.append(result)
+    
+    # Majority vote per criterion
+    final_criteria = []
+    for cid_idx, c in enumerate(all_results[0]["criteria"]):
+        votes = [r["criteria"][cid_idx]["pass"] for r in all_results]
+        pass_count = sum(1 for v in votes if v)
+        majority_pass = pass_count > scoring_runs / 2
+        
+        # Pick reasoning from the majority side
+        for r in all_results:
+            if r["criteria"][cid_idx]["pass"] == majority_pass:
+                reasoning = r["criteria"][cid_idx]["reasoning"]
+                break
+        
+        final_criteria.append({
+            "id": c["id"],
+            "question": c["question"],
+            "pass": majority_pass,
+            "reasoning": reasoning,
+            "vote_detail": f"{pass_count}/{scoring_runs} passed"
+        })
+    
+    # Majority vote on anti-gaming
+    ag_votes = [r.get("anti_gaming_pass", True) for r in all_results]
+    ag_pass_count = sum(1 for v in ag_votes if v)
+    ag_majority = ag_pass_count > scoring_runs / 2
+    
+    # Pick reasoning from majority side
+    ag_reasoning = ""
+    for r in all_results:
+        if r.get("anti_gaming_pass", True) == ag_majority:
+            ag_reasoning = r.get("anti_gaming_reasoning", "")
+            break
+    
+    total_pass = sum(1 for c in final_criteria if c["pass"])
+    total_criteria = len(final_criteria)
+    score = total_pass / total_criteria if total_criteria > 0 else 0
+    
+    return {
+        "criteria": final_criteria,
+        "total_pass": total_pass,
+        "total_criteria": total_criteria,
+        "score": round(score, 3),
+        "anti_gaming_pass": ag_majority,
+        "anti_gaming_reasoning": ag_reasoning,
+        "scoring_runs": scoring_runs,
+        "individual_scores": [r["score"] for r in all_results]
+    }
+
+
 def score_round(
     client: anthropic.Anthropic,
     outputs: list[str],
     criteria: list[dict],
-    model: str = DEFAULT_MODEL
+    model: str = DEFAULT_MODEL,
+    scoring_runs: int = DEFAULT_SCORING_RUNS
 ) -> dict:
     """Score all outputs for a single round.
+    
+    Each output is scored `scoring_runs` times (default 3) with majority
+    vote per criterion to reduce variance.
     
     Returns:
         {
@@ -210,7 +286,7 @@ def score_round(
     criterion_totals = {}
     
     for output_text in outputs:
-        result = score_single_output(client, output_text, criteria, model)
+        result = score_single_output(client, output_text, criteria, model, scoring_runs=scoring_runs)
         individual_scores.append(result)
         
         if not result.get("anti_gaming_pass", True):

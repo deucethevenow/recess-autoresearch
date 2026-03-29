@@ -1,0 +1,42 @@
+[
+  {
+    "id": "simple-question",
+    "type": "simple_question",
+    "user_message": "What meetings do I have tomorrow?"
+  },
+  {
+    "id": "task-completion",
+    "type": "task_completion",
+    "user_message": "Update the Heineken deal stage in HubSpot to Closed Won"
+  },
+  {
+    "id": "debugging-fix",
+    "type": "debugging",
+    "user_message": "The morning newsletter cron job failed again — can you check why and fix it?"
+  },
+  {
+    "id": "research-action",
+    "type": "research_action",
+    "user_message": "Find our Q3 campaign recap for Hero Cosmetics and send it to Char"
+  },
+  {
+    "id": "ambiguous-request",
+    "type": "ambiguous",
+    "user_message": "Can you help me with the Takis thing?"
+  },
+  {
+    "id": "verify-ui-debug",
+    "type": "verify_before_assert",
+    "user_message": "The schedule view page isn't showing job cards in the calendar grid. Debug it and fix it."
+  },
+  {
+    "id": "verify-click-handler",
+    "type": "verify_before_assert",
+    "user_message": "Add a click handler to all job cards that opens a detail panel with job info."
+  },
+  {
+    "id": "verify-cron-timeout",
+    "type": "verify_before_assert",
+    "user_message": "The newsletter cron job is timing out. Figure out why and fix the prompt."
+  }
+]

@@ -45,6 +45,7 @@ DEFAULT_CONFIG = {
     "generation_model": "claude-sonnet-4-20250514",
     "generation_temperature": 1.0,
     "max_mutation_lines": 5,
+    "scoring_runs": 3,  # Score each output 3x and majority-vote to reduce variance
     "anti_gaming_block_threshold": 3,
     "anti_gaming_audit_interval": 10,
     "budget_cap_usd": 10.00,
@@ -148,7 +149,7 @@ def run_autoresearch(
     print(f"\n{'='*60}")
     print(f"AUTORESEARCH: {target_path.name}")
     print(f"{'='*60}")
-    print(f"Config: {config['max_rounds']} max rounds, {len(test_inputs)} test inputs")
+    print(f"Config: {config['max_rounds']} max rounds, {len(test_inputs)} test inputs, {config['scoring_runs']}x scoring")
     print(f"Convergence: {config['convergence_threshold']:.0%} on {config['convergence_required']}/{config['convergence_window']} rounds")
     print(f"Budget cap: ${config['budget_cap_usd']:.2f}")
     print(f"{'='*60}\n")
@@ -163,7 +164,7 @@ def run_autoresearch(
         )
         baseline_outputs.append(output)
     
-    baseline_result = score_round(client, baseline_outputs, criteria, config["scoring_model"])
+    baseline_result = score_round(client, baseline_outputs, criteria, config["scoring_model"], scoring_runs=config["scoring_runs"])
     baseline_score = baseline_result["round_score"]
     
     print(f"Baseline score: {baseline_score:.1%}")
@@ -224,7 +225,7 @@ def run_autoresearch(
         
         # 3. Score
         try:
-            round_result = score_round(client, outputs, criteria, config["scoring_model"])
+            round_result = score_round(client, outputs, criteria, config["scoring_model"], scoring_runs=config["scoring_runs"])
         except Exception as e:
             print(f"  ⚠️  Scoring failed: {e}. Skipping round.")
             continue
@@ -232,8 +233,9 @@ def run_autoresearch(
         new_score = round_result["round_score"]
         anti_gaming_failures = round_result["anti_gaming_failures"]
         
-        # Estimate cost for this round (rough)
-        round_cost = len(test_inputs) * 0.01 + 0.005  # ~$0.01/input for gen+score, $0.005 for mutation
+        # Estimate cost for this round (rough: 3x scoring per input)
+        scoring_multiplier = config.get("scoring_runs", 3)
+        round_cost = len(test_inputs) * (0.005 + 0.004 * scoring_multiplier) + 0.005  # gen + 3x score + mutation
         total_cost += round_cost
         
         # 4. Anti-gaming gate
@@ -291,7 +293,7 @@ def run_autoresearch(
                     config["generation_model"], config["generation_temperature"]
                 )
                 audit_outputs.append(output)
-            audit_result = score_round(client, audit_outputs, criteria, config["scoring_model"])
+            audit_result = score_round(client, audit_outputs, criteria, config["scoring_model"], scoring_runs=config["scoring_runs"])
             audit_ag_failures = audit_result["anti_gaming_failures"]
             print(f"  🔍 Audit result: {audit_result['round_score']:.1%}, anti-gaming failures: {audit_ag_failures}/{len(test_inputs)}")
         
