@@ -514,6 +514,219 @@ Score the RESPONSES.
 - [ ] Prompt health report running weekly
 - [ ] All results in BigQuery for analysis
 
+### Phase 4: Skill-Level Autoresearch (Workflow Optimization)
+
+#### The Problem Phases 0-3 Don't Solve
+
+Phases 0-3 optimize prompt text — the instructions inside a SKILL.md or system prompt. But the biggest quality failures at Recess aren't word choice problems. They're workflow problems:
+
+- OpenClaw builds UI and claims it's done without running Playwright → **missing verification step**
+- Newsletter cron does web search + content generation in one shot and times out → **wrong workflow architecture**
+- Campaign recap generates content but doesn't validate that required metrics are present in the input data → **missing pre-flight check**
+- Code changes get committed without running the test suite → **missing quality gate**
+
+No amount of prompt mutation fixes these. The skill needs structural changes — adding steps, removing steps, reordering steps, adding error handling.
+
+#### What Skill-Level Autoresearch Looks Like
+
+Instead of mutating text in one file, the loop mutates the **workflow definition** of a skill by toggling predefined workflow steps on/off and measuring if outcomes improve.
+
+##### The Workflow Steps Menu
+
+A curated library of proven workflow patterns that can be added to or removed from any skill. These are NOT free-form code edits — they're tested, modular blocks:
+
+**Verification Steps:**
+- `playwright-verify` — Run Playwright tests on UI output before reporting done
+- `dry-run-first` — Execute a dry run before making real changes
+- `output-schema-validate` — Validate output matches expected JSON/data schema
+- `diff-review` — Show the diff of any file changes and confirm they're intentional
+
+**Pre-flight Checks:**
+- `input-completeness-check` — Verify all required input data exists before starting
+- `dependency-health-check` — Confirm external services (APIs, databases) are reachable
+- `context-window-check` — Verify context window has enough room before proceeding
+- `budget-check` — Confirm remaining budget before expensive operations
+
+**Quality Gates:**
+- `test-suite-run` — Run existing tests after any code change
+- `lint-and-format` — Run linter before committing
+- `human-approval-gate` — Pause and request approval before deploying
+- `rollback-checkpoint` — Create a restore point before making changes
+
+**Error Handling:**
+- `timeout-with-fallback` — Set a timeout and define fallback behavior
+- `retry-with-backoff` — Retry failed operations with exponential backoff
+- `graceful-degradation` — Define what to do when a dependency is unavailable
+- `error-notification` — Send Slack alert on failure
+
+**Reporting:**
+- `progress-updates` — Send status updates every N minutes for long tasks
+- `completion-evidence` — Include proof of completion (test output, screenshots, logs) in done message
+- `cost-tracking` — Log API costs per operation
+
+##### How the Loop Works
+
+```
+SKILL-LEVEL AUTORESEARCH LOOP:
+
+1. Load the skill's current workflow definition
+   (SKILL.md + any scripts/configs)
+
+2. Load the skill's eval checklist
+   (same binary yes/no format, but criteria now include workflow quality)
+
+3. Run the skill on test inputs → score against checklist → establish baseline
+
+4. LOOP:
+   a. Analyze which eval criteria are failing
+   b. Select a workflow step from the menu that could fix the failure
+      - Failing "verify before assert"? → Try adding `playwright-verify`
+      - Failing "handles errors gracefully"? → Try adding `timeout-with-fallback`
+      - Failing "provides progress updates"? → Try adding `progress-updates`
+   c. Add the workflow step to the skill definition
+   d. Run the skill on test inputs → score
+   e. Score improved? → KEEP the step, commit
+      Score same or worse? → REMOVE the step, revert
+   f. Repeat
+
+5. Output: An improved skill with the optimal combination of workflow steps
+```
+
+##### Key Difference from Prompt Autoresearch
+
+| Aspect | Prompt Autoresearch (Phase 0-3) | Skill Autoresearch (Phase 4) |
+|---|---|---|
+| What's mutated | Text in SKILL.md or prompt file | Workflow steps added/removed from skill |
+| Mutation source | LLM proposes new wording | Selection from predefined menu of steps |
+| Risk of breaking things | Low (just text) | Medium (adding code/logic) |
+| What it fixes | Output quality, tone, formatting | Process gaps, missing checks, error handling |
+| Eval criteria focus | "Is the output good?" | "Did the skill execute correctly?" |
+
+##### Example: Applying to the UI Build Skill
+
+Current skill: Builds UI features when asked.
+Current failure: Claims done without testing, cards don't render, click handlers missing.
+
+**Eval checklist for skill-level optimization:**
+
+```markdown
+1. RENDERS: Does the built component actually render in the browser
+   without console errors?
+   → Yes/No
+
+2. INTERACTIVE: Do all clickable elements respond to clicks
+   with the expected behavior?
+   → Yes/No
+
+3. DATA-CORRECT: Does the displayed data match what the API returns?
+   → Yes/No
+
+4. TESTED: Are Playwright tests included that cover rendering,
+   interaction, and data correctness?
+   → Yes/No
+
+5. EVIDENCE: Does the completion message include test output
+   proving the above?
+   → Yes/No
+```
+
+The loop would try adding workflow steps:
+- Round 1: Add `playwright-verify` → score improves on criteria 4 and 5 → KEEP
+- Round 2: Add `output-schema-validate` → score improves on criterion 3 → KEEP
+- Round 3: Add `lint-and-format` → score unchanged → REVERT
+- Round 4: Add `dry-run-first` → score unchanged → REVERT
+- Result: Skill now includes Playwright verification and schema validation as permanent steps
+
+##### How Workflow Steps Are Implemented
+
+Each step in the menu is a self-contained module with:
+
+```
+workflow-steps/
+├── playwright-verify/
+│   ├── README.md          # What this step does, when to use it
+│   ├── inject.md          # Instructions to add to SKILL.md
+│   ├── setup.sh           # Any one-time setup (npm install playwright, etc.)
+│   ├── template.ts        # Template test file the skill customizes
+│   └── eval-criteria.md   # What eval criteria this step should improve
+├── timeout-with-fallback/
+│   ├── README.md
+│   ├── inject.md
+│   └── template.py
+├── progress-updates/
+│   ├── README.md
+│   └── inject.md
+└── ...
+```
+
+The `inject.md` is the key file — it's the text that gets added to the skill's SKILL.md when the step is toggled on. This means the mutation is still text-based (adding/removing inject.md content from SKILL.md), but the text represents a workflow change, not a wording change.
+
+This keeps the same mechanical simplicity as prompt autoresearch (modify one file, measure, keep/revert) while enabling structural improvements.
+
+#### Eval Criteria: Workflow Quality vs. Output Quality
+
+Phase 0-3 eval criteria ask: "Is the output good?"
+Phase 4 eval criteria ask: "Did the skill execute correctly?"
+
+Both should be used together. A skill can produce good output (passes Phase 0-3 criteria) through a bad process (skips testing, doesn't handle errors). Phase 4 catches process failures that Phase 0-3 misses.
+
+Combined eval checklist example:
+
+```markdown
+## Output Quality (Phase 0-3 criteria)
+1. Is the output correct and complete? → Yes/No
+2. Is it concise? → Yes/No
+3. Does it match the expected format? → Yes/No
+
+## Workflow Quality (Phase 4 criteria)
+1. Were all required pre-flight checks run? → Yes/No
+2. Was the output verified before reporting done? → Yes/No
+3. Were errors handled gracefully (not silently swallowed)? → Yes/No
+4. Was evidence of completion included? → Yes/No
+```
+
+#### Prerequisites Before Phase 4
+
+1. Phase 2-3 must be stable (Slack command, scheduled runs, 3+ targets running)
+2. The workflow steps menu needs to be built and tested individually before the loop can use them
+3. Need real failure data from Phase 2-3 runs to know which workflow steps matter most
+4. Each workflow step needs its own tests to confirm it doesn't break existing functionality
+
+#### Implementation Approach
+
+**Phase 4A: Build the workflow steps menu (2-3 weeks)**
+- Start with the 5 most impactful steps based on real failure data
+- Build each as a self-contained module in `workflow-steps/`
+- Test each individually on a real skill
+- Recommended starting set: `playwright-verify`, `completion-evidence`, `progress-updates`, `timeout-with-fallback`, `input-completeness-check`
+
+**Phase 4B: Build the skill-level loop (1-2 weeks)**
+- Extend autoresearch-loop.py to handle workflow step mutations
+- Add the workflow-quality eval criteria framework
+- Run first skill-level optimization on a test skill
+
+**Phase 4C: Apply to real skills (ongoing)**
+- Start with the UI build skill (biggest pain point)
+- Then code review skill
+- Then cron job management skill
+- Each run produces data on which workflow steps actually help
+
+#### Open Questions for Deuce
+
+1. Which 5 workflow steps from the menu would you prioritize? 16 listed — we should start with the ones that match your biggest pain points.
+2. Should the workflow steps be global (apply to all skills) or per-skill (each skill gets its own combination)? Recommendation: per-skill with a recommended default set.
+3. How do we handle the case where a workflow step requires setup (e.g., Playwright needs `npm install`)? Should the loop handle setup automatically, or should setup be a prerequisite?
+4. Budget: skill-level runs will be more expensive because testing workflow changes requires actually running the skill end-to-end. Rough estimate: $30-50/run. Acceptable?
+
+**Acceptance Criteria (Phase 4):**
+- [ ] Workflow steps menu contains at least 5 tested, modular steps
+- [ ] Skill-level loop can add/remove workflow steps and measure impact
+- [ ] At least one real skill optimized end-to-end with measurable improvement
+- [ ] Combined eval checklist (output quality + workflow quality) validated
+- [ ] Cost per skill-level run documented and within approved budget
+
+*This is Phase 4 planning only. Do not build until Phases 2-3 are stable and reviewed.*
+
 ---
 
 ## 5. Technical Specifications
